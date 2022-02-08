@@ -1,19 +1,23 @@
 import uuid
 import jwt
+import requests
 from datetime import datetime
+from io import BytesIO
 from django.conf import settings
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password
+from django.core.files import File
 from django.core.mail import send_mail
 from django.db.models import Q
+from google.oauth2 import id_token
+from google.auth.transport.requests import Request as GoogleRequest
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from . import serializers
 from . import services
-from .models import Token, User, RegistrationUserData, RecoverUserPasswordData
+from .models import User, RegistrationUserData, RecoverUserPasswordData
 # Create your views here.
-# todo добавить авторизацию через соц. сети
 
 
 class RegistrationView(APIView):
@@ -66,15 +70,7 @@ class CommitRegistrationView(APIView):
         )
         data.delete()
 
-        login(request, user)
-        resp = services.authenticate(user)
-
-        Token.objects.create(
-            token=resp['access_token'],
-            user=user
-        )
-
-        return Response(resp, 201)
+        return Response(services.authenticate(user), 201)
 
 
 class LoginView(APIView):
@@ -89,16 +85,7 @@ class LoginView(APIView):
 
             if user is None:
                 return Response({'detail': 'Пользователь не найден!'}, 400)
-
-            login(request, user)
-            resp = services.authenticate(user)
-
-            Token.objects.create(
-                token=resp['access_token'],
-                user=user
-            )
-
-            return Response(resp, 201)
+            return Response(services.authenticate(user), 201)
 
         return Response({'serialize_error': login_serializer.errors}, 406)
 
@@ -120,14 +107,8 @@ class RefreshTokenView(APIView):
 
             try:
                 user = User.objects.get(id=payload['id'])
-                resp = services.authenticate(user)
 
-                Token.objects.create(
-                    token=resp['access_token'],
-                    user=user
-                )
-
-                return Response(resp)
+                return Response(services.authenticate(user))
             except User.DoesNotExist:
                 return Response({'detail': 'Такой пользователь не найден!'}, 400)
 
@@ -175,4 +156,43 @@ class CommitRecoverPasswordView(APIView):
         data.user.save()
         data.delete()
 
-        return Response({})
+        return Response(status=204)
+
+
+class GoogleAuthView(APIView):
+
+    def post(self, request: Request):
+        serializer = serializers.GoogleAuthSerializer(data=request.data)
+
+        if serializer.is_valid():
+            data = serializer.data
+
+            try:
+                google_data = id_token.verify_oauth2_token(data['token'], GoogleRequest())
+            except ValueError:
+                return Response({'detail': 'Can not authorize google account!'}, 500)
+
+            try:
+                user = User.objects.get(email=google_data['email'])
+
+                return Response(services.authenticate(user))
+            except User.DoesNotExist:
+                resp = requests.get(google_data['picture'])
+
+                user = User.objects.create(
+                    username=google_data['email'].split('@')[0],
+                    email=google_data['email'],
+                    password=make_password(data['password']),
+                    first_name=google_data['given_name'],
+                    last_name=google_data['family_name'],
+                )
+
+                user.avatar.save(
+                    content=File(BytesIO(resp.content)),
+                    name=f"{google_data['email'].split('@')[0]}.{datetime.utcnow()}.jpg"
+                )
+                user.save()
+
+                return Response(services.authenticate(user), 201)
+
+        return Response({'serialize_error': serializer.errors}, 406)

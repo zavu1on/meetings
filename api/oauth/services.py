@@ -1,7 +1,7 @@
 import jwt
 from datetime import datetime, timedelta
 from django.conf import settings
-from .models import User
+from .models import User, Token
 
 
 def authenticate(user: User) -> dict:
@@ -22,6 +22,11 @@ def authenticate(user: User) -> dict:
         },
         settings.SECRET_KEY,
         algorithm=settings.ALGORITHM
+    )
+
+    Token.objects.create(
+        token=access_token,
+        user=user
     )
 
     return {

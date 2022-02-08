@@ -22,3 +22,8 @@ class RecoverPasswordSerializer(ModelSerializer):
     class Meta:
         model = RecoverUserPasswordData
         fields = '__all__'
+
+
+class GoogleAuthSerializer(Serializer):
+    token = serializers.CharField()
+    password = serializers.CharField()

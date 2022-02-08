@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'rest_framework',
 
     'api.oauth',
+    'front',
 ]
 
 MIDDLEWARE = [
@@ -128,7 +129,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'oauth.User'
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': ('api.oauth.auth.AuthBackend',),
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'api.oauth.auth.AuthBackend',
+    ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny'
     ],

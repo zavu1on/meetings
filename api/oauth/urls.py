@@ -8,4 +8,5 @@ urlpatterns = [
     path('refresh-token/', views.RefreshTokenView.as_view()),
     path('recover-password/', views.RecoverPasswordView.as_view()),
     path('commit-recover-password/<str:uuid>/', views.CommitRecoverPasswordView.as_view()),
+    path('google/', views.GoogleAuthView.as_view()),
 ]
