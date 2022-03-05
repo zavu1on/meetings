@@ -1,4 +1,5 @@
 import jwt
+from random import random
 from datetime import datetime, timedelta
 from django.conf import settings
 from .models import User, Token
@@ -9,6 +10,7 @@ def authenticate(user: User) -> dict:
         {
             'id': user.id,
             'type': 'access',
+            'random_key': datetime.utcnow().timestamp() * random(),
             'exp': datetime.utcnow() + timedelta(minutes=30),
         },
         settings.SECRET_KEY,
@@ -18,6 +20,7 @@ def authenticate(user: User) -> dict:
         {
             'id': user.id,
             'type': 'refresh',
+            'random_key': datetime.utcnow().timestamp() * random(),
             'exp': datetime.utcnow() + timedelta(weeks=1)
         },
         settings.SECRET_KEY,

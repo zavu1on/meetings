@@ -4,13 +4,13 @@ import requests
 from datetime import datetime
 from io import BytesIO
 from django.conf import settings
-from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password
 from django.core.files import File
 from django.core.mail import send_mail
 from django.db.models import Q
 from google.oauth2 import id_token
 from google.auth.transport.requests import Request as GoogleRequest
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -28,12 +28,8 @@ class RegistrationView(APIView):
         if registration_serializer.is_valid():
             data = registration_serializer.initial_data
 
-            try:
-                User.objects.get(Q(username=data['username']) | Q(email=data['email']))
-
+            if len(User.objects.filter(Q(username=data['username']) | Q(email=data['email']))) != 0:
                 return Response({'detail': 'Пользователь с таким именем или email уже существует!'}, 400)
-            except User.DoesNotExist:
-                pass
 
             registration_serializer.save(uuid=uuid.uuid1())
 
@@ -41,7 +37,7 @@ class RegistrationView(APIView):
 
             send_mail(
                 'Подтверждение регистрации',
-                f'Для завершения регистрации пройдите по ссылке: {request.build_absolute_uri("/")}commit'
+                f'Для завершения регистрации пройдите по ссылке: {request.build_absolute_uri("/")}#/commit'
                 f'-registration/{data["uuid"]}/',
                 settings.EMAIL_HOST_USER,
                 [data['email']]
@@ -81,10 +77,15 @@ class LoginView(APIView):
         if login_serializer.is_valid():
             data = login_serializer.data
 
-            user = authenticate(username=data['username'], password=data['password'])
+            try:
+                user = User.objects.get(username=data['username'])
 
-            if user is None:
-                return Response({'detail': 'Пользователь не найден!'}, 400)
+                if not user.check_password(data['password']):
+                    raise User.DoesNotExist
+
+            except User.DoesNotExist:
+                return Response({'detail': 'Пользователь не найден!'}, 404)
+
             return Response(services.authenticate(user), 201)
 
         return Response({'serialize_error': login_serializer.errors}, 406)
@@ -99,7 +100,7 @@ class RefreshTokenView(APIView):
             try:
                 payload = jwt.decode(token_serializer.data['token'], settings.SECRET_KEY, algorithms=settings.ALGORITHM)
             except jwt.PyJWTError:
-                return Response('Invalid authentication. Could not decode token.', 400)
+                return Response('Токен повтора истек, необходима повторная авторизация!', 400)
 
             token_exp = datetime.fromtimestamp(payload['exp'])
             if token_exp < datetime.utcnow():
@@ -126,14 +127,14 @@ class RecoverPasswordView(APIView):
             try:
                 user = User.objects.get(username=data['username'], email=data['email'])
             except User.DoesNotExist:
-                return Response({'detail': 'Пользователь с таким именем или email не существует!'}, 404)
+                return Response({'detail': 'Пользователь с таким именем или email не найден!'}, 404)
 
             serializer.save(uuid=uuid.uuid1(), user=user)
             data = serializer.data
 
             send_mail(
                 'Восстановление пароля',
-                f'Для восстановления пароля перейдите по ссылке: {request.build_absolute_uri("/")}commit'
+                f'Для восстановления пароля перейдите по ссылке: {request.build_absolute_uri("/")}#/commit'
                 f'-recover-password/{data["uuid"]}/',
                 settings.EMAIL_HOST_USER,
                 [data['email']]
@@ -170,19 +171,20 @@ class GoogleAuthView(APIView):
             try:
                 google_data = id_token.verify_oauth2_token(data['token'], GoogleRequest())
             except ValueError:
-                return Response({'detail': 'Can not authorize google account!'}, 500)
+                return Response({'detail': 'Не можем авторизовать google аккаунт!'}, 500)
 
             try:
                 user = User.objects.get(email=google_data['email'])
 
                 return Response(services.authenticate(user))
             except User.DoesNotExist:
+                password = str(uuid.uuid1())
                 resp = requests.get(google_data['picture'])
 
                 user = User.objects.create(
                     username=google_data['email'].split('@')[0],
                     email=google_data['email'],
-                    password=make_password(data['password']),
+                    password=make_password(password),
                     first_name=google_data['given_name'],
                     last_name=google_data['family_name'],
                 )
@@ -193,6 +195,35 @@ class GoogleAuthView(APIView):
                 )
                 user.save()
 
+                user.email_user(
+                    'Сгенерированный пароль',
+                    f'Вы авторизовались через аккаунт google, ваш пароль от аккаунта - {password}, Вы всегда можете поменять его!',
+                    settings.EMAIL_HOST_USER
+                )
+
                 return Response(services.authenticate(user), 201)
 
         return Response({'serialize_error': serializer.errors}, 406)
+
+
+class GetUserDataView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request):
+
+        return Response({
+            'id': request.user.id,
+            'username': request.user.username,
+            'fullName': request.user.get_full_name(),
+            'avatarUrl': request.build_absolute_uri("/") + request.user.avatar.url.replace('/', '', 1),
+        })
+
+
+class SetUserAvatarView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request: Request):
+        request.user.avatar = request.FILES['avatar']
+        request.user.save()
+
+        return Response({'avatarUrl': request.build_absolute_uri("/") + request.user.avatar.url.replace('/', '', 1)})

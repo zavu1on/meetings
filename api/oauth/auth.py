@@ -1,5 +1,4 @@
 import jwt
-from datetime import datetime
 from typing import Optional
 from django.conf import settings
 from rest_framework import authentication, exceptions
@@ -26,32 +25,27 @@ class AuthBackend(authentication.BaseAuthentication):
             token = auth_header[1].decode('utf-8')
         except UnicodeError:
             raise exceptions.AuthenticationFailed(
-                'Invalid token header. Token string should not contain invalid characters.'
+                'Invalid token header. Token string should not contain invalid characters.',
             )
 
         return self.authenticate_credential(token)
 
     def authenticate_credential(self, token) -> tuple:
         try:
-            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=settings.ALGORITHM)
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=settings.ALGORITHM, options={
+                'verify_signature': True,
+                'verify_exp': True
+            })
         except jwt.PyJWTError:
             raise exceptions.AuthenticationFailed('Invalid authentication. Could not decode token.')
 
-        token_exp = datetime.fromtimestamp(payload['exp'])
-        if token_exp < datetime.utcnow():
-            Token.objects.get(token=token).delete()
-
-            raise exceptions.AuthenticationFailed('Token expired.')
-
         try:
-            token = Token.objects.get(
-                token=token
-            )
+            t = Token.objects.get(token=token)
+
+            if t.user.id != payload['id']:
+                raise exceptions.AuthenticationFailed('Вы используете чужой токен!')
         except Token.DoesNotExist:
             raise exceptions.AuthenticationFailed('Такой токен не зарегистрирован!')
-
-        if token.user.id != payload['id']:
-            raise exceptions.AuthenticationFailed('Вы используете чужой токен!')
 
         try:
             user = User.objects.get(id=payload['id'])

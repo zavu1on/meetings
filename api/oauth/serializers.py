@@ -26,4 +26,3 @@ class RecoverPasswordSerializer(ModelSerializer):
 
 class GoogleAuthSerializer(Serializer):
     token = serializers.CharField()
-    password = serializers.CharField()

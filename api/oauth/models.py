@@ -27,7 +27,7 @@ class User(AbstractUser):
     )
 
     def get_full_name(self):
-        return f'{self.last_name} {self.first_name} {self.patronymic}'
+        return f'{self.last_name} {self.first_name} {self.patronymic or ""}'
 
 
 class Token(models.Model):
