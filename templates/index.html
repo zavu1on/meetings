@@ -1,79 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta
-      name="google-signin-client_id"
-      content="86441136343-i06ohchk29arie0qikhhv5sedd66bjbo.apps.googleusercontent.com"
-    />
-    <title>Title</title>
-  </head>
-  <body>
-    <div id="my-signin"></div>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+    <title>Svelte app</title>
     {% csrf_token %}
-    <script>
-      window.onbeforeunload = function(e){
-          gapi.auth2.getAuthInstance().signOut();
-        };
 
-      async function onSuccess(googleUser) {
-        const profile = googleUser.getBasicProfile()
-        const body = {
-          token: googleUser.getAuthResponse().id_token,
-        }
+    <link rel="icon" type="image/png" href="/static/favicon.ico" />
+    <link rel="stylesheet" href="/static/global.css" />
+    <link rel="stylesheet" href="/static/build/bundle.css" />
+    <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
+    <script defer src="/static/build/bundle.js"></script>
+  </head>
 
-        const resp = await fetch('/api/v1/auth/google/', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json;charset=UTF-8',
-            'X-CSRFToken': getCookie('csrftoken'),
-          },
-          body: JSON.stringify(body),
-        })
-        const data = await resp.json()
-
-        console.log(data)
-      }
-
-      function onFailure(error) {
-        console.log(error)
-      }
-
-      function renderButton() {
-        gapi.signin2.render('my-signin', {
-          scope: 'profile email',
-          width: 240,
-          height: 50,
-          longtitle: true,
-          theme: 'dark',
-          onsuccess: onSuccess,
-          onfailure: onFailure,
-        })
-      }
-
-      function getCookie(name) {
-        let cookieValue = null
-        if (document.cookie && document.cookie !== '') {
-          const cookies = document.cookie.split(';')
-          for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim()
-            // Does this cookie string begin with the name we want?
-            if (cookie.substring(0, name.length + 1) === name + '=') {
-              cookieValue = decodeURIComponent(
-                cookie.substring(name.length + 1)
-              )
-              break
-            }
-          }
-        }
-        return cookieValue
-      }
-    </script>
-
-    <script
-      src="https://apis.google.com/js/platform.js?onload=renderButton"
-      async
-      defer
-    ></script>
-  </body>
+  <body></body>
 </html>

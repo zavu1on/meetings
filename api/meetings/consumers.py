@@ -23,6 +23,14 @@ class MovingConsumer(AsyncWebsocketConsumer):
             self.channel_name
         )
 
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'enter',
+                'data': {'id': self.scope['user'].id},
+            }
+        )
+
         await self.accept()
 
     async def disconnect(self, close_code):
@@ -76,3 +84,10 @@ class MovingConsumer(AsyncWebsocketConsumer):
     async def send_sdp(self, event):
         receive = event['data']
         await self.send(dumps(receive))
+
+    async def enter(self, event):
+        receive = event['data']
+        await self.send(dumps({
+            **receive,
+            'type': 'enter'
+        }))

@@ -96,6 +96,20 @@ class GetMeetingData(APIView):
         })
 
 
+class DelMeetingView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request: Request, token: str):
+        try:
+            meeting = models.Meeting.objects.get(slug=token)
+        except models.Meeting.DoesNotExist:
+            return Response({'detail': 'Такая конференция не найдена'}, 404)
+
+        meeting.delete()
+
+        return Response(status=204)
+
+
 class AddRoomView(APIView):
     permission_classes = [IsAuthenticated]
 
