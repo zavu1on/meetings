@@ -1,6 +1,22 @@
 import type { IResponse, Method } from './types/request'
 
-export const BASE_URL = 'http://localhost:8000/api/v1'
+export const BASE_URL = 'http://localhost:8000/api/v1' // http://localhost:8000
+
+function getCookie(name: string) {
+  var cookieValue = null
+  if (document.cookie && document.cookie !== '') {
+    var cookies = document.cookie.split(';')
+    for (var i = 0; i < cookies.length; i++) {
+      var cookie = cookies[i].trim()
+      // Does this cookie string begin with the name we want?
+      if (cookie.substring(0, name.length + 1) === name + '=') {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1))
+        break
+      }
+    }
+  }
+  return cookieValue!
+}
 
 export default async function request<R = any>(
   url: string,
@@ -12,6 +28,7 @@ export default async function request<R = any>(
   headers = {
     ...headers,
     'Content-Type': 'application/json',
+    'X-CSRFToken': getCookie('csrftoken'),
   }
 
   if (useCredentials) {
@@ -47,6 +64,7 @@ export default async function request<R = any>(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-CSRFToken': getCookie('csrftoken'),
         },
         body: JSON.stringify({
           token: localStorage.getItem('refresh'),

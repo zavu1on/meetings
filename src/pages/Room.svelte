@@ -12,11 +12,26 @@
 
   export let params
 
+  async function getUserMedia(
+    video: boolean,
+    audio: boolean
+  ): Promise<MediaStream> {
+    try {
+      return await navigator.mediaDevices.getUserMedia({ video, audio })
+    } catch (e) {
+      M.toast({
+        html: 'Медиа девайс не был найден!',
+        classes: 'red darken-4',
+      })
+
+      return new MediaStream()
+    }
+  }
+
   const step = 1
   let isLoaded = false
 
-  let recPeer: Peer
-  const sendPeer = new Peer()
+  const peer = new Peer()
 
   const users = writable<
     {
@@ -31,7 +46,7 @@
     }[]
   >([])
 
-  const toggleAudio = () => {
+  const toggleAudio = async () => {
     users.update(state =>
       state.map(u => {
         if (u.id === $auth.id) {
@@ -41,6 +56,8 @@
         return u
       })
     )
+
+    await toggle()
   }
   const toggleVideo = async () => {
     users.update(state =>
@@ -53,16 +70,41 @@
       })
     )
 
+    await toggle()
+  }
+  const toggle = async () => {
     const me = $users.find(u => u.id === $auth.id)
 
-    if (me.isVideo) {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+    if (me.isVideo || me.isAudio) {
+      const stream = await getUserMedia(me.isVideo, me.isAudio)
+      const video = document.getElementById(`video-${me.id}`)
 
       // @ts-ignore
       video.srcObject = stream
       // @ts-ignore
       video.play()
+
+      $users
+        .filter(u => u.id !== $auth.id)
+        .forEach(u => {
+          var mediaCall = peer.call(u.peerId, stream)
+          mediaCall.on('stream', function (remoteStream) {
+            const video = document.getElementById(`video-${u.id}`)
+
+            // @ts-ignore
+            video.srcObject = remoteStream
+            // @ts-ignore
+            video.play()
+          })
+        })
     }
+
+    WS.send(
+      JSON.stringify({
+        type: 'move',
+        data: $users.find(u => u.id === $auth.id),
+      })
+    )
   }
 
   onMount(async () => {
@@ -90,16 +132,16 @@
     const r = await request('/auth/get-user-data/')
     auth.set(r.data)
 
-    recPeer = new Peer(`rec-${$auth.id}`)
+    peer.on('call', async function (call) {
+      const me = $users.find(u => u.id === $auth.id)
 
-    recPeer.on('connection', function (conn) {
-      conn.on('data', function (data) {
-        console.log(data)
-      })
-    })
-    recPeer.on('call', async function (call) {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
-      call.answer(stream)
+      if (me.isVideo || me.isAudio) {
+        const stream = await getUserMedia(me.isVideo, me.isAudio)
+
+        call.answer(stream)
+      } else {
+        call.answer(new MediaStream())
+      }
 
       const id = $users.find(u => u.peerId === call.peer).id
 
@@ -116,13 +158,13 @@
     users.set([
       {
         id: $auth.id,
-        peerId: sendPeer.id,
+        peerId: peer.id,
         x: Math.floor(Math.random() * 101),
         y: Math.floor(Math.random() * 101),
         name: $auth.username,
         avatarUrl: $auth.avatarUrl,
         isAudio: false,
-        isVideo: true,
+        isVideo: false,
       },
     ])
 
@@ -147,38 +189,11 @@
     if (data.users) {
       // data.type === 'move'
       users.set(data.users)
-    } else if (data.type === 'enter' && data.data !== $auth.id) {
-      var conn = sendPeer.connect(`rec-${data.data}`)
-      conn.on('open', function () {
-        conn.send('hi! ' + $auth.id)
+    } else if (data.type === 'enter' && data.data === $auth.id) {
+      M.toast({
+        html: `Подвигайтесь, чтобы видеть лица других пользователей`,
+        classes: 'light-green darken-3',
       })
-
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
-      var mediaCall = sendPeer.call(`rec-${data.data}`, stream)
-      mediaCall.on('stream', function (remoteStream) {
-        const video = document.getElementById(`video-${data.data}`)
-
-        // @ts-ignore
-        video.srcObject = remoteStream
-        // @ts-ignore
-        video.play()
-      })
-    }
-
-    if (data.type === 'enter' && $auth.id !== -1) {
-      const me = $users.find(u => u.id === $auth.id)
-
-      if (me.isVideo) {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-        })
-        const video = document.getElementById(`video-${me.id}`)
-
-        // @ts-ignore
-        video.srcObject = stream
-        // @ts-ignore
-        video.play()
-      }
     }
   }
 
@@ -242,6 +257,9 @@
       <div class="user" style={`left: ${user.x}%; top: ${user.y}%`}>
         {#if user.isVideo}
           <video id={`video-${user.id}`} />
+        {:else if user.isAudio}
+          <video id={`video-${user.id}`} style="display: none" />
+          <img src={user.avatarUrl} alt="avatar" />
         {:else}
           <img src={user.avatarUrl} alt="avatar" />
         {/if}

@@ -18,6 +18,7 @@
   let url = ''
   let enterPassword = ''
   let roomName = ''
+  let isMyMeeting = false
 
   onMount(async () => {
     const resp = await request('/meetings/get/')
@@ -116,6 +117,7 @@
             href="javascript:void()"
             on:click={() => {
               url = ''
+              isMyMeeting = false
               openModal('#join')
             }}>Присоединиться к встрече</a
           >
@@ -135,6 +137,7 @@
         href="javascript:void()"
         on:click={() => {
           url = ''
+          isMyMeeting = false
           openModal('#join')
         }}>Присоединиться к встрече</a
       >
@@ -191,6 +194,7 @@
                 href="javascript:void()"
                 on:click={() => {
                   url = meeting.slug
+                  isMyMeeting = true
                   openModal('#join')
                 }}
               >
@@ -268,40 +272,42 @@
         >Войти
         <i class="material-icons right">send</i>
       </button>
-      <button
-        class="btn waves-effect waves-light light-green darken-3"
-        on:click={async () => {
-          await navigator.clipboard.writeText(url)
-          M.toast({
-            html: `Идентификатор входа скопирован в буфер обена!`,
-            classes: 'light-green darken-3',
-          })
-        }}
-        >Поделиться
-        <i class="material-icons right">share</i>
-      </button>
-      <button
-        class="waves-effect waves-light btn red darken-4"
-        on:click={async () => {
-          await request(`/meetings/delete/${url}/`, 'POST')
+      {#if isMyMeeting}
+        <button
+          class="btn waves-effect waves-light light-green darken-3"
+          on:click={async () => {
+            await navigator.clipboard.writeText(url)
+            M.toast({
+              html: `Идентификатор входа скопирован в буфер обена!`,
+              classes: 'light-green darken-3',
+            })
+          }}
+          >Поделиться
+          <i class="material-icons right">share</i>
+        </button>
+        <button
+          class="waves-effect waves-light btn red darken-4"
+          on:click={async () => {
+            await request(`/meetings/delete/${url}/`, 'POST')
 
-          meetings.update(state => state.filter(m => m.slug !== url))
+            meetings.update(state => state.filter(m => m.slug !== url))
 
-          rowed_meetings = []
-          for (let i = 0; i < $meetings.length; i++) {
-            if (i % 6 === 0) {
-              rowed_meetings.push([])
+            rowed_meetings = []
+            for (let i = 0; i < $meetings.length; i++) {
+              if (i % 6 === 0) {
+                rowed_meetings.push([])
+              }
+
+              rowed_meetings[rowed_meetings.length - 1].push($meetings[i])
             }
 
-            rowed_meetings[rowed_meetings.length - 1].push($meetings[i])
-          }
-
-          M.toast({
-            html: `Вы успешно удалили встречу!`,
-            classes: 'light-green darken-3',
-          })
-        }}><i class="material-icons left">delete</i>удалить</button
-      >
+            M.toast({
+              html: `Вы успешно удалили встречу!`,
+              classes: 'light-green darken-3',
+            })
+          }}><i class="material-icons left">delete</i>удалить</button
+        >
+      {/if}
     </div>
   </div>
 {:else}
