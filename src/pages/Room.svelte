@@ -7,7 +7,6 @@
   import auth from '../store/auth'
   import Peer from 'peerjs'
 
-  // todo переделать перемещение
   // todo добавить перемещение по щелчку
 
   export let params
@@ -28,11 +27,23 @@
     }
   }
 
-  const step = 1
+  const step = 0.25
+  const moovingProps: {
+    w: boolean
+    a: boolean
+    s: boolean
+    d: boolean
+  } = {
+    w: false,
+    a: false,
+    s: false,
+    d: false,
+  }
+  let showChat = false
   let isLoaded = false
+  let chatText = ''
 
   const peer = new Peer()
-
   const users = writable<
     {
       id: number
@@ -40,9 +51,17 @@
       x: number
       y: number
       name: string
+      fullName: string
       avatarUrl: string
       isAudio: boolean
       isVideo: boolean
+    }[]
+  >([])
+  const messages = writable<
+    {
+      name: string
+      avatarUrl: string
+      text: string
     }[]
   >([])
 
@@ -71,6 +90,9 @@
     )
 
     await toggle()
+  }
+  const toggleChat = () => {
+    showChat = !showChat
   }
   const toggle = async () => {
     const me = $users.find(u => u.id === $auth.id)
@@ -151,7 +173,12 @@
         // @ts-ignore
         video.srcObject = remoteStream
         // @ts-ignore
-        video.play()
+        video.play().catch(() => {
+          M.toast({
+            html: `Подвигайтесь, чтобы видеть лица других пользователей`,
+            classes: 'light-green darken-3',
+          })
+        })
       })
     })
 
@@ -162,6 +189,7 @@
         x: Math.floor(Math.random() * 101),
         y: Math.floor(Math.random() * 101),
         name: $auth.username,
+        fullName: $auth.fullName,
         avatarUrl: $auth.avatarUrl,
         isAudio: false,
         isVideo: false,
@@ -189,72 +217,90 @@
     if (data.users) {
       // data.type === 'move'
       users.set(data.users)
-    } else if (data.type === 'enter' && data.data === $auth.id) {
-      M.toast({
-        html: `Подвигайтесь, чтобы видеть лица других пользователей`,
-        classes: 'light-green darken-3',
-      })
+    } else if (data.type === 'message') {
+      messages.update(s => [...s, data.data])
     }
   }
 
-  document.addEventListener('keypress', event => {
-    const user = $users.find(u => u.id === $auth.id)
+  document.addEventListener('keydown', event => {
+    // @ts-ignore
+    for (const el of event.path) {
+      if (el.tagName === 'INPUT') return
+    }
 
-    if (event.key.toLowerCase() === 'w' && user.y - step > 0) {
-      users.update(state =>
-        state.map(u => {
-          if (u.id === $auth.id) {
-            u.y -= step
-          }
+    moovingProps[event.key.toLocaleLowerCase()] = true
+  })
+  document.addEventListener('keyup', event => {
+    moovingProps[event.key.toLocaleLowerCase()] = false
+  })
 
-          return u
-        })
-      )
-    } else if (event.key.toLowerCase() === 's' && user.y + step < 100) {
-      users.update(state =>
-        state.map(u => {
-          if (u.id === $auth.id) {
-            u.y += step
-          }
+  setInterval(() => {
+    if (moovingProps.a || moovingProps.d || moovingProps.s || moovingProps.w) {
+      const user = $users.find(u => u.id === $auth.id)
 
-          return u
-        })
-      )
-    } else if (event.key.toLowerCase() === 'a' && user.x - step > 0) {
-      users.update(state =>
-        state.map(u => {
-          if (u.id === $auth.id) {
-            u.x -= step
-          }
+      if (moovingProps.w && user.y - step > 0) {
+        users.update(state =>
+          state.map(u => {
+            if (u.id === $auth.id) {
+              u.y -= step
+            }
 
-          return u
-        })
-      )
-    } else if (event.key.toLowerCase() === 'd' && user.x + step < 100) {
-      users.update(state =>
-        state.map(u => {
-          if (u.id === $auth.id) {
-            u.x += step
-          }
+            return u
+          })
+        )
+      }
+      if (moovingProps.s && user.y + step < 100) {
+        users.update(state =>
+          state.map(u => {
+            if (u.id === $auth.id) {
+              u.y += step
+            }
 
-          return u
+            return u
+          })
+        )
+      }
+      if (moovingProps.a && user.x - step > 0) {
+        users.update(state =>
+          state.map(u => {
+            if (u.id === $auth.id) {
+              u.x -= step
+            }
+
+            return u
+          })
+        )
+      }
+      if (moovingProps.d && user.x + step < 100) {
+        users.update(state =>
+          state.map(u => {
+            if (u.id === $auth.id) {
+              u.x += step
+            }
+
+            return u
+          })
+        )
+      }
+
+      WS.send(
+        JSON.stringify({
+          type: 'move',
+          data: $users.find(u => u.id === $auth.id),
         })
       )
     }
-
-    WS.send(
-      JSON.stringify({
-        type: 'move',
-        data: $users.find(u => u.id === $auth.id),
-      })
-    )
-  })
+  }, 10)
 </script>
 
 {#if isLoaded}
   <div class="canvas">
     {#each $users as user}
-      <div class="user" style={`left: ${user.x}%; top: ${user.y}%`}>
+      <div
+        class="user"
+        style={`left: ${user.x}%; top: ${user.y}%`}
+        title={user.fullName}
+      >
         {#if user.isVideo}
           <video id={`video-${user.id}`} />
         {:else if user.isAudio}
@@ -266,6 +312,53 @@
         <span>{user.name}</span>
       </div>
     {/each}
+    {#if showChat}
+      <div class="chat">
+        <h5>Чат</h5>
+        <div class="content">
+          {#each $messages as message}
+            <div class="message">
+              <div class="logo">
+                <img src={message.avatarUrl} alt="avatar" />
+                <span>{message.name}</span>
+              </div>
+              <div class="text">{message.text}</div>
+            </div>
+          {/each}
+        </div>
+        <div class="form">
+          <div class="input-field">
+            <input id="message" type="text" bind:value={chatText} />
+            <label for="message">Сообщение</label>
+          </div>
+          <button
+            class="btn waves-effect waves-light amber darken-4"
+            on:click={() => {
+              if (chatText.trim() === '') {
+                return M.toast({
+                  html: `Сообщение не может быть пустым`,
+                  classes: 'red darken-4',
+                })
+              }
+
+              WS.send(
+                JSON.stringify({
+                  type: 'message',
+                  data: {
+                    name: $auth.username,
+                    avatarUrl: $auth.avatarUrl,
+                    text: chatText,
+                  },
+                })
+              )
+              chatText = ''
+            }}
+            >Отправить
+            <i class="material-icons right">send</i>
+          </button>
+        </div>
+      </div>
+    {/if}
   </div>
   <footer class="yellow darken-4">
     <div class="container">
@@ -294,7 +387,16 @@
             видео</button
           >
         </div>
-        <div class="col s8">q</div>
+        <div class="col s6" />
+        <div class="col s2">
+          <button
+            class="waves-effect waves-light btn light-green darken-3"
+            on:click={toggleChat}
+            ><i class="material-icons left"
+              >{showChat ? 'chat_bubble_outline' : 'chat_bubble'}</i
+            >{showChat ? 'скрыть' : 'показать'} чат</button
+          >
+        </div>
       </div>
     </div>
   </footer>
@@ -362,5 +464,79 @@
     align-items: center;
     justify-content: center;
     height: 100vh;
+  }
+
+  .chat {
+    display: flex;
+    flex-direction: column;
+    background: #ffb74d;
+    border-radius: 16px;
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    height: 90%;
+    width: 20%;
+    margin: 8px;
+    box-shadow: 0 2px 2px 0 #ffb74d, 0 3px 1px -2px #ffb74d, 0 1px 5px 0 #ffb74d;
+  }
+
+  h5 {
+    margin-left: 8px;
+    font-size: 2rem;
+  }
+
+  .content {
+    width: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1;
+  }
+
+  .message {
+    margin: 6px;
+    margin-top: 12px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .logo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-right: 18px;
+  }
+
+  .logo img {
+    width: 42px;
+    height: 42px;
+    object-fit: cover;
+    border-radius: 50%;
+  }
+
+  .logo span {
+    font-size: 1.2rem;
+    margin-top: -4px;
+  }
+
+  .text {
+    font-size: 1.1rem;
+  }
+
+  .form {
+    margin-bottom: 8px;
+    padding: 8px;
+    width: 100%;
+  }
+
+  .form input {
+    border-bottom-color: #fff;
+  }
+
+  .form label {
+    color: #fff;
   }
 </style>
