@@ -19,7 +19,7 @@
       return await navigator.mediaDevices.getUserMedia({ video, audio })
     } catch (e) {
       M.toast({
-        html: 'Медиа девайс не был найден!',
+        html: 'Медиа девайс не был найден',
         classes: 'red darken-4',
       })
 
@@ -40,14 +40,20 @@
     d: false,
   }
   let showChat = false
+  let showScreenCast = false // admin only
+  let isScreenCasting = false
   let isLoaded = false
+  let isAdmin: boolean
   let chatText = ''
 
   const peer = new Peer()
+  const screenCastPeer = new Peer()
+
   const users = writable<
     {
       id: number
       peerId: string
+      screenCastPeerId: string
       x: number
       y: number
       name: string
@@ -94,6 +100,52 @@
   const toggleChat = () => {
     showChat = !showChat
   }
+  const toggleScreenCast = async () => {
+    showScreenCast = !showScreenCast
+    let stream: MediaStream
+
+    if (showScreenCast) {
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: false,
+        })
+        stream.getTracks().forEach(t => {
+          t.onended = () => {
+            isScreenCasting = false
+            showScreenCast = false
+            WS.send(
+              JSON.stringify({
+                type: 'toggle',
+                data: false,
+              })
+            )
+          }
+        })
+      } catch (e) {
+        showScreenCast = !showScreenCast
+
+        return M.toast({
+          html: 'Не получилось сделать захват экрана',
+          classes: 'red darken-4',
+        })
+      }
+
+      $users
+        .filter(u => u.id !== $auth.id)
+        .forEach(u => {
+          var mediaCall = screenCastPeer.call(u.screenCastPeerId, stream)
+          mediaCall.on('stream', function (remoteStream) {})
+        })
+    }
+
+    WS.send(
+      JSON.stringify({
+        type: 'toggle',
+        data: {},
+      })
+    )
+  }
   const toggle = async () => {
     const me = $users.find(u => u.id === $auth.id)
 
@@ -131,7 +183,10 @@
 
   onMount(async () => {
     try {
-      await request(`/meetings/rooms/get/${params.id1}/${params.id2}/`)
+      const { data } = await request(
+        `/meetings/rooms/get/${params.id1}/${params.id2}/`
+      )
+      isAdmin = data.is_admin
     } catch (e) {
       M.toast({
         html: `<span>Вы не можете зайти на конференцию</span>`,
@@ -181,11 +236,29 @@
         })
       })
     })
+    screenCastPeer.on('call', async function (call) {
+      call.answer(new MediaStream())
+
+      call.on('stream', function (remoteStream) {
+        const video = document.getElementById(`screencast`)
+
+        // @ts-ignore
+        video.srcObject = remoteStream
+        // @ts-ignore
+        video.play().catch(() => {
+          M.toast({
+            html: `Подвигайтесь, чтобы видеть демонстрацию экрана`,
+            classes: 'light-green darken-3',
+          })
+        })
+      })
+    })
 
     users.set([
       {
         id: $auth.id,
         peerId: peer.id,
+        screenCastPeerId: screenCastPeer.id,
         x: Math.floor(Math.random() * 101),
         y: Math.floor(Math.random() * 101),
         name: $auth.username,
@@ -219,6 +292,12 @@
       users.set(data.users)
     } else if (data.type === 'message') {
       messages.update(s => [...s, data.data])
+    } else if (data.type === 'toggle') {
+      isScreenCasting = !isScreenCasting
+
+      if (typeof data.data === 'boolean') {
+        isScreenCasting = data.data
+      }
     }
   }
 
@@ -359,6 +438,9 @@
         </div>
       </div>
     {/if}
+    {#if isScreenCasting}
+      <video id="screencast" />
+    {/if}
   </div>
   <footer class="yellow darken-4">
     <div class="container">
@@ -387,7 +469,18 @@
             видео</button
           >
         </div>
-        <div class="col s6" />
+        <div class="col s3">
+          {#if isAdmin}
+            <button
+              class="waves-effect waves-light btn light-green darken-3"
+              on:click={toggleScreenCast}
+              ><i class="material-icons left"
+                >{showScreenCast ? 'stop_screen_share' : 'screen_share'}</i
+              >{showScreenCast ? 'скрыть' : 'демонстрировать'} экран</button
+            >
+          {/if}
+        </div>
+        <div class="col s3" />
         <div class="col s2">
           <button
             class="waves-effect waves-light btn light-green darken-3"
@@ -538,5 +631,26 @@
 
   .form label {
     color: #fff;
+  }
+
+  #screencast {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 90%;
+    width: 100%;
+    margin-top: 1%;
+  }
+
+  @media screen and (max-width: 1200px) {
+    .chat {
+      width: 40%;
+    }
+  }
+
+  @media screen and (max-width: 600px) {
+    .chat {
+      width: 50%;
+    }
   }
 </style>
