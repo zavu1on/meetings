@@ -102,6 +102,9 @@ class DelMeetingView(APIView):
     def post(self, request: Request, token: str):
         try:
             meeting = models.Meeting.objects.get(slug=token)
+
+            if request.user not in meeting.owners.all():
+                return Response({'detail': 'Вы не выполнить это действие'}, 400)
         except models.Meeting.DoesNotExist:
             return Response({'detail': 'Такая конференция не найдена'}, 404)
 
@@ -116,6 +119,9 @@ class AddRoomView(APIView):
     def post(self, request: Request, token: str):
         try:
             meeting = models.Meeting.objects.get(slug=token)
+
+            if request.user not in meeting.owners.all():
+                return Response({'detail': 'Вы не выполнить это действие'}, 400)
         except models.Meeting.DoesNotExist:
             return Response({'detail': 'Такая конференция не найдена'}, 404)
 
@@ -133,6 +139,9 @@ class DelRoomView(APIView):
     def post(self, request: Request, token: str):
         try:
             meeting = models.Meeting.objects.get(slug=token)
+
+            if request.user not in meeting.owners.all():
+                return Response({'detail': 'Вы не выполнить это действие'}, 400)
         except models.Meeting.DoesNotExist:
             return Response({'detail': 'Такая конференция не найдена'}, 404)
 
@@ -158,4 +167,7 @@ class GetRoomData(APIView):
         except models.Room.DoesNotExist:
             return Response({'detail': 'Такая комната не найдена'}, 404)
 
-        return Response(serializers.RoomSerializer(room).data)
+        return Response({
+            **serializers.RoomSerializer(room).data,
+            'is_admin': request.user in meeting.owners.all()
+        })

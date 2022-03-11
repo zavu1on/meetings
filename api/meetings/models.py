@@ -26,8 +26,6 @@ class Room(models.Model):
 
     # config
     can_customers_speak = models.BooleanField('Могут ли клиенты говорить', default=True)
-    show_customers_video = models.BooleanField('Показывать видео участников', default=True)
-    do_loud_voice = models.BooleanField('Слышно ли создателя везде', default=True)
 
     slug = models.SlugField(max_length=150, unique=True)
 

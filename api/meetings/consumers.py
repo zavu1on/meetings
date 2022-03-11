@@ -5,7 +5,7 @@ from django.contrib.auth.models import AnonymousUser
 users = {}
 
 
-class MovingConsumer(AsyncWebsocketConsumer):
+class RoomConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
         tokens = self.scope['url_route']['kwargs']

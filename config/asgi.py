@@ -6,20 +6,19 @@ It exposes the ASGI callable as a module-level variable named ``application``.
 For more information on this file, see
 https://docs.djangoproject.com/en/4.0/howto/deployment/asgi/
 """
-
 import os
-from channels.auth import AuthMiddlewareStack
-from channels.routing import ProtocolTypeRouter, URLRouter
 from django.core.asgi import get_asgi_application
-import api.meetings.routing
-
-import jwt
-from channels.db import database_sync_to_async
-from django.conf import settings
-from django.contrib.auth.models import AnonymousUser
-from api.oauth.models import Token
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+django_asgi_app = get_asgi_application()
+
+from django.conf import settings
+from channels.routing import ProtocolTypeRouter, URLRouter
+import api.meetings.routing
+import jwt
+from channels.db import database_sync_to_async
+from django.contrib.auth.models import AnonymousUser
+from api.oauth.models import Token
 
 
 @database_sync_to_async
@@ -47,7 +46,7 @@ class AuthMiddleware:
 
 
 application = ProtocolTypeRouter({
-    "http": get_asgi_application(),
+    "http": django_asgi_app,
     "websocket": AuthMiddleware(
         URLRouter(
             api.meetings.routing.websocket_urlpatterns
