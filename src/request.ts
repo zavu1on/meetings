@@ -49,17 +49,7 @@ export default async function request<R = any>(
   }
 
   if (!resp.ok) {
-    if (
-      json.detail === 'Токен повтора истек, необходима повторная авторизация!'
-    ) {
-      localStorage.removeItem('access')
-      localStorage.removeItem('refresh')
-      location.replace('/#/login/')
-
-      return
-    } else if (
-      json.detail === 'Invalid authentication. Could not decode token.'
-    ) {
+    if (json.detail === 'Invalid authentication. Could not decode token.') {
       const access_resp = await fetch(BASE_URL + '/auth/refresh-token/', {
         method: 'POST',
         headers: {
@@ -71,6 +61,19 @@ export default async function request<R = any>(
         }),
       })
       const access_json = await access_resp.json()
+
+      if (
+        access_json.detail ===
+        'Токен повтора истек, необходима повторная авторизация!'
+      ) {
+        localStorage.removeItem('access')
+        localStorage.removeItem('refresh')
+        location.replace('/#/login/')
+        location.reload()
+
+        return
+      }
+
       localStorage.setItem('access', access_json.access_token)
 
       return request(url, method, data, headers, useCredentials)
@@ -81,6 +84,9 @@ export default async function request<R = any>(
     ) {
       localStorage.removeItem('access')
       localStorage.removeItem('refresh')
+
+      location.replace('/#/login/')
+      location.reload()
     } else if (resp.status === 406) {
       let html = '<span>'
       for (const [k, v] of Object.entries(json.serialize_error)) {

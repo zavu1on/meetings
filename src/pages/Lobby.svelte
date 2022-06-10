@@ -116,20 +116,22 @@
             </div>
             <div class="card-action">
               <a use:link={`/meeting/${params.id1}/${room.slug}/`}>войти</a>
-              <button
-                class="waves-effect waves-light btn red darken-4"
-                on:click={async () => {
-                  await request(
-                    `/meetings/rooms/delete/${params.id1}/`,
-                    'POST',
-                    {
-                      id: room.id,
-                    }
-                  )
+              {#if reqData.isHost}
+                <button
+                  class="waves-effect waves-light btn red darken-4"
+                  on:click={async () => {
+                    await request(
+                      `/meetings/rooms/delete/${params.id1}/`,
+                      'POST',
+                      {
+                        id: room.id,
+                      }
+                    )
 
-                  rooms.update(data => data.filter(r => r.id !== room.id))
-                }}><i class="material-icons left">delete</i>удалить</button
-              >
+                    rooms.update(data => data.filter(r => r.id !== room.id))
+                  }}><i class="material-icons left">delete</i>удалить</button
+                >
+              {/if}
             </div>
           </div>
         </div>

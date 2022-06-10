@@ -18,6 +18,17 @@
     try {
       return await navigator.mediaDevices.getUserMedia({ video, audio })
     } catch (e) {
+      users.update(state =>
+        state.map(u => {
+          if (u.id === $auth.id) {
+            u.isAudio = false
+            u.isVideo = false
+          }
+
+          return u
+        })
+      )
+
       M.toast({
         html: 'Медиа девайс не был найден',
         classes: 'red darken-4',
@@ -44,10 +55,27 @@
   let isScreenCasting = false
   let isLoaded = false
   let isAdmin: boolean
+  let wasNotificated: boolean
   let chatText = ''
 
-  const peer = new Peer()
-  const screenCastPeer = new Peer()
+  const peer = new Peer({
+    config: {
+      iceServers: [
+        {
+          urls: 'stun:stun.develz.org:3478',
+        },
+      ],
+    },
+  })
+  const screenCastPeer = new Peer({
+    config: {
+      iceServers: [
+        {
+          urls: 'stun:stun.develz.org:3478',
+        },
+      ],
+    },
+  })
 
   const users = writable<
     {
@@ -137,14 +165,21 @@
           var mediaCall = screenCastPeer.call(u.screenCastPeerId, stream)
           mediaCall.on('stream', function (remoteStream) {})
         })
-    }
 
-    WS.send(
-      JSON.stringify({
-        type: 'toggle',
-        data: {},
-      })
-    )
+      WS.send(
+        JSON.stringify({
+          type: 'toggle',
+          data: true,
+        })
+      )
+    } else {
+      WS.send(
+        JSON.stringify({
+          type: 'toggle',
+          data: false,
+        })
+      )
+    }
   }
   const toggle = async () => {
     const me = $users.find(u => u.id === $auth.id)
@@ -180,19 +215,149 @@
       })
     )
   }
+  const copyInviteLink = async () => {
+    const resp = await request('/meetings/get-password/', 'POST', {
+      token: params.id1,
+    })
+
+    navigator.clipboard.writeText(location.href + '?pass=' + resp.data.password)
+
+    M.toast({
+      html: `Ссылка для приглашения скопирована в буфер обмена`,
+      classes: 'light-green darken-3',
+    })
+  }
 
   onMount(async () => {
     try {
+      if (
+        location.href.split('?')[1] &&
+        location.href.split('?')[1].split('=')[0] === 'pass'
+      ) {
+        await request('/meetings/enter/', 'POST', {
+          url: params.id1,
+          password: location.href.split('?')[1].split('=')[1] || null,
+        })
+
+        push(location.href.split('?')[0])
+        location.reload()
+      }
+
       const { data } = await request(
         `/meetings/rooms/get/${params.id1}/${params.id2}/`
       )
       isAdmin = data.is_admin
+
+      const r = await request('/auth/get-user-data/')
+
+      auth.set(r.data)
+      users.set([
+        {
+          id: $auth.id,
+          peerId: peer.id,
+          screenCastPeerId: screenCastPeer.id,
+          x: Math.floor(Math.random() * 101),
+          y: Math.floor(Math.random() * 101),
+          name: $auth.username,
+          fullName: $auth.fullName,
+          avatarUrl: $auth.avatarUrl,
+          isAudio: false,
+          isVideo: false,
+        },
+      ])
+
+      WS.send(
+        JSON.stringify({
+          type: 'enter',
+          data: $auth.id,
+        })
+      )
+      WS.send(
+        JSON.stringify({
+          type: 'move',
+          data: $users.find(u => u.id === $auth.id),
+        })
+      )
+
+      peer.on('call', async function (call) {
+        const me = $users.find(u => u.id === $auth.id)
+
+        if (me.isVideo || me.isAudio) {
+          const stream = await getUserMedia(me.isVideo, me.isAudio)
+
+          call.answer(stream)
+        } else {
+          call.answer(new MediaStream())
+        }
+
+        const caller = $users.find(u => u.peerId === call.peer)
+
+        call.on('stream', function (remoteStream) {
+          const video = document.getElementById(`video-${caller.id}`)
+          caller.isVideo = true // кастыльчик
+
+          // @ts-ignore
+          video.srcObject = remoteStream
+          // @ts-ignore
+          video.play().catch(() => {
+            WS.send(
+              JSON.stringify({
+                type: 'enter',
+                data: $auth.id,
+              })
+            )
+
+            if (!wasNotificated) {
+              M.toast({
+                html: `Подвигайтесь, чтобы видеть лица других пользователей`,
+                classes: 'light-green darken-3',
+              })
+
+              wasNotificated = true
+            }
+          })
+        })
+      })
+      screenCastPeer.on('call', async function (call) {
+        console.log('call')
+
+        call.answer(new MediaStream())
+        isScreenCasting = true // кастыльчик
+
+        call.on('stream', function (remoteStream) {
+          const video = document.getElementById(`screencast`)
+
+          // @ts-ignore
+          video.srcObject = remoteStream
+          // @ts-ignore
+          video.play().catch(() => {
+            WS.send(
+              JSON.stringify({
+                type: 'enter',
+                data: $auth.id,
+              })
+            )
+
+            if (!wasNotificated) {
+              M.toast({
+                html: `Подвигайтесь, чтобы видеть лица других пользователей`,
+                classes: 'light-green darken-3',
+              })
+
+              wasNotificated = true
+            }
+          })
+        })
+      })
+
+      isLoaded = true
     } catch (e) {
       M.toast({
         html: `<span>Вы не можете зайти на конференцию</span>`,
         classes: 'red darken-4',
       })
-      push('/')
+
+      push('#/')
     }
   })
 
@@ -205,85 +370,6 @@
     WS.close(1)
   }
 
-  WS.onopen = async () => {
-    const r = await request('/auth/get-user-data/')
-    auth.set(r.data)
-
-    peer.on('call', async function (call) {
-      const me = $users.find(u => u.id === $auth.id)
-
-      if (me.isVideo || me.isAudio) {
-        const stream = await getUserMedia(me.isVideo, me.isAudio)
-
-        call.answer(stream)
-      } else {
-        call.answer(new MediaStream())
-      }
-
-      const id = $users.find(u => u.peerId === call.peer).id
-
-      call.on('stream', function (remoteStream) {
-        const video = document.getElementById(`video-${id}`)
-
-        // @ts-ignore
-        video.srcObject = remoteStream
-        // @ts-ignore
-        video.play().catch(() => {
-          M.toast({
-            html: `Подвигайтесь, чтобы видеть лица других пользователей`,
-            classes: 'light-green darken-3',
-          })
-        })
-      })
-    })
-    screenCastPeer.on('call', async function (call) {
-      call.answer(new MediaStream())
-
-      call.on('stream', function (remoteStream) {
-        const video = document.getElementById(`screencast`)
-
-        // @ts-ignore
-        video.srcObject = remoteStream
-        // @ts-ignore
-        video.play().catch(() => {
-          M.toast({
-            html: `Подвигайтесь, чтобы видеть демонстрацию экрана`,
-            classes: 'light-green darken-3',
-          })
-        })
-      })
-    })
-
-    users.set([
-      {
-        id: $auth.id,
-        peerId: peer.id,
-        screenCastPeerId: screenCastPeer.id,
-        x: Math.floor(Math.random() * 101),
-        y: Math.floor(Math.random() * 101),
-        name: $auth.username,
-        fullName: $auth.fullName,
-        avatarUrl: $auth.avatarUrl,
-        isAudio: false,
-        isVideo: false,
-      },
-    ])
-
-    WS.send(
-      JSON.stringify({
-        type: 'move',
-        data: $users.find(u => u.id === $auth.id),
-      })
-    )
-    WS.send(
-      JSON.stringify({
-        type: 'enter',
-        data: $auth.id,
-      })
-    )
-
-    isLoaded = true
-  }
   WS.onmessage = async event => {
     const data = JSON.parse(event.data)
 
@@ -293,11 +379,15 @@
     } else if (data.type === 'message') {
       messages.update(s => [...s, data.data])
     } else if (data.type === 'toggle') {
-      isScreenCasting = !isScreenCasting
-
       if (typeof data.data === 'boolean') {
         isScreenCasting = data.data
+      } else if (data.data === $auth.id) {
+        console.log(data.data)
+
+        isScreenCasting = true
       }
+    } else if (data.type === 'enter' && data.data !== $auth.id && data.data) {
+      toggle()
     }
   }
 
@@ -450,10 +540,10 @@
             class="waves-effect waves-light btn light-green darken-3"
             on:click={toggleAudio}
             ><i class="material-icons left"
-              >{$users.find(u => u.id === $auth.id).isAudio
+              >{$users.find(u => u.id === $auth.id)?.isAudio
                 ? 'mic_off'
-                : 'mic'}</i
-            >{$users.find(u => u.id === $auth.id).isAudio ? 'выкл' : 'вкл'}.
+                : 'mic'}
+            </i>{$users.find(u => u.id === $auth.id)?.isAudio ? 'выкл' : 'вкл'}.
             звук</button
           >
         </div>
@@ -462,10 +552,10 @@
             class="waves-effect waves-light btn light-green darken-3"
             on:click={toggleVideo}
             ><i class="material-icons left"
-              >{$users.find(u => u.id === $auth.id).isVideo
+              >{$users.find(u => u.id === $auth.id)?.isVideo
                 ? 'videocam_off'
                 : 'videocam'}</i
-            >{$users.find(u => u.id === $auth.id).isVideo ? 'выкл' : 'вкл'}.
+            >{$users.find(u => u.id === $auth.id)?.isVideo ? 'выкл' : 'вкл'}.
             видео</button
           >
         </div>
@@ -480,7 +570,14 @@
             >
           {/if}
         </div>
-        <div class="col s3" />
+        <div class="col s1" />
+        <div class="col s2">
+          <button
+            class="waves-effect waves-light btn light-green darken-3"
+            on:click={copyInviteLink}
+            ><i class="material-icons left">share</i>Пригласить</button
+          >
+        </div>
         <div class="col s2">
           <button
             class="waves-effect waves-light btn light-green darken-3"
