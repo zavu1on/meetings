@@ -19,6 +19,7 @@ class CreateMeetingView(APIView):
             data = serializer.data
 
             m = models.Meeting.objects.create(
+                master=request.user,
                 name=data['name'],
                 password=data['password'],
                 slug=uuid.uuid1()
@@ -77,7 +78,7 @@ class EnterToMeetingView(APIView):
         return Response({'serialize_error': serializer.errors}, 406)
 
 
-class GetMeetingData(APIView):
+class GetMeetingDataView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request: Request, token: str):
@@ -86,7 +87,7 @@ class GetMeetingData(APIView):
         except models.Meeting.DoesNotExist:
             return Response({'detail': 'Такая конференция не найдена'}, 404)
 
-        if request.user in meeting.black_list.all():
+        if request.user in meeting.black_list.all() or request.user not in meeting.customers.all():
             return Response({'detail': 'Вы не можете зайти на конференцию'}, 400)
 
         return Response({
@@ -103,8 +104,8 @@ class DelMeetingView(APIView):
         try:
             meeting = models.Meeting.objects.get(slug=token)
 
-            if request.user not in meeting.owners.all():
-                return Response({'detail': 'Вы не выполнить это действие'}, 400)
+            if request.user != meeting.master:
+                return Response({'detail': 'Вы не можете выполнить это действие'}, 400)
         except models.Meeting.DoesNotExist:
             return Response({'detail': 'Такая конференция не найдена'}, 404)
 
@@ -121,7 +122,7 @@ class AddRoomView(APIView):
             meeting = models.Meeting.objects.get(slug=token)
 
             if request.user not in meeting.owners.all():
-                return Response({'detail': 'Вы не выполнить это действие'}, 400)
+                return Response({'detail': 'Вы не можете выполнить это действие'}, 400)
         except models.Meeting.DoesNotExist:
             return Response({'detail': 'Такая конференция не найдена'}, 404)
 
@@ -141,7 +142,7 @@ class DelRoomView(APIView):
             meeting = models.Meeting.objects.get(slug=token)
 
             if request.user not in meeting.owners.all():
-                return Response({'detail': 'Вы не выполнить это действие'}, 400)
+                return Response({'detail': 'Вы не можете выполнить это действие'}, 400)
         except models.Meeting.DoesNotExist:
             return Response({'detail': 'Такая конференция не найдена'}, 404)
 
@@ -150,7 +151,7 @@ class DelRoomView(APIView):
         return Response(status=204)
 
 
-class GetRoomData(APIView):
+class GetRoomDataView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request: Request, token1: str, token2: str):
@@ -171,3 +172,15 @@ class GetRoomData(APIView):
             **serializers.RoomSerializer(room).data,
             'is_admin': request.user in meeting.owners.all()
         })
+
+
+class GetMeetingPasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request: Request):
+        try:
+            meeting = models.Meeting.objects.get(slug=request.data['token'])
+        except models.Meeting.DoesNotExist:
+            return Response({'detail': 'Такая конференция не найдена'}, 404)
+
+        return Response({'password': meeting.password})

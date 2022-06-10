@@ -1,8 +1,15 @@
 from json import loads, dumps
+from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
+from .models import Meeting
 
 users = {}
+
+
+@database_sync_to_async
+def is_user_in_customers(token, user):
+    return user in Meeting.objects.get(slug=token).customers.all()
 
 
 class RoomConsumer(AsyncWebsocketConsumer):
@@ -11,6 +18,9 @@ class RoomConsumer(AsyncWebsocketConsumer):
         tokens = self.scope['url_route']['kwargs']
 
         if self.scope['user'] == AnonymousUser:
+            return await self.disconnect(-1)
+
+        if not await is_user_in_customers(tokens["token1"], self.scope['user']):
             return await self.disconnect(-1)
 
         self.room_group_name = f'{tokens["token1"]}-{tokens["token2"]}'

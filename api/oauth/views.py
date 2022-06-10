@@ -100,7 +100,7 @@ class RefreshTokenView(APIView):
             try:
                 payload = jwt.decode(token_serializer.data['token'], settings.SECRET_KEY, algorithms=settings.ALGORITHM)
             except jwt.PyJWTError:
-                return Response('Токен повтора истек, необходима повторная авторизация!', 400)
+                return Response({'detail': 'Токен повтора истек, необходима повторная авторизация!'}, 400)
 
             token_exp = datetime.fromtimestamp(payload['exp'])
             if token_exp < datetime.utcnow():
