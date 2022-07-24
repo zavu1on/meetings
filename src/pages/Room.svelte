@@ -293,29 +293,31 @@
         const caller = $users.find(u => u.peerId === call.peer)
 
         call.on('stream', function (remoteStream) {
-          const video = document.getElementById(`video-${caller.id}`)
-          caller.isVideo = true // кастыльчик
+          setTimeout(() => {
+            const video = document.getElementById(`video-${caller.id}`)
+            caller.isVideo = true // кастыльчик
 
-          // @ts-ignore
-          video.srcObject = remoteStream
-          // @ts-ignore
-          video.play().catch(() => {
-            WS.send(
-              JSON.stringify({
-                type: 'enter',
-                data: $auth.id,
-              })
-            )
+            // @ts-ignore
+            video.srcObject = remoteStream
+            // @ts-ignore
+            video.play().catch(() => {
+              WS.send(
+                JSON.stringify({
+                  type: 'enter',
+                  data: $auth.id,
+                })
+              )
 
-            if (!wasNotificated) {
-              M.toast({
-                html: `Подвигайтесь, чтобы видеть лица других пользователей`,
-                classes: 'light-green darken-3',
-              })
+              if (!wasNotificated) {
+                M.toast({
+                  html: `Подвигайтесь, чтобы видеть лица других пользователей`,
+                  classes: 'light-green darken-3',
+                })
 
-              wasNotificated = true
-            }
-          })
+                wasNotificated = true
+              }
+            })
+          }, 1000)
         })
       })
       screenCastPeer.on('call', async function (call) {
@@ -559,7 +561,7 @@
             видео</button
           >
         </div>
-        <div class="col s3">
+        <!-- <div class="col s3">
           {#if isAdmin}
             <button
               class="waves-effect waves-light btn light-green darken-3"
@@ -569,7 +571,7 @@
               >{showScreenCast ? 'скрыть' : 'демонстрировать'} экран</button
             >
           {/if}
-        </div>
+        </div> -->
         <div class="col s1" />
         <div class="col s2">
           <button
